@@ -1,0 +1,94 @@
+name: Build Rime with copilot plugin
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # 使用 CMake 和 Ninja
+  CMAKE_GENERATOR: Ninja
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Rime main repo
+        uses: actions/checkout@v4
+        with:
+          repository: rime/librime
+          path: ./
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Checkout copilot plugin fork
+        uses: actions/checkout@v4
+        with:
+          repository: prettycation/librime-copilot
+          path: plugins/librime-copilot
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install dependencies
+        uses: crazy-max/gh-action-chocolatey@v2
+        with:
+          args: install cmake ninja -y
+
+      - name: Install Boost via vcpkg
+        run: |
+          vcpkg install boost:x64-windows
+        shell: cmd
+
+      - name: Install glog
+        run: |
+          vcpkg install glog:x64-windows
+        shell: cmd
+
+      - name: Install yaml-cpp
+        run: |
+          vcpkg install yaml-cpp:x64-windows
+        shell: cmd
+
+      - name: Install leveldb
+        run: |
+          vcpkg install leveldb:x64-windows
+        shell: cmd
+
+      - name: Install marisa-trie
+        run: |
+          vcpkg install marisa:x64-windows
+        shell: cmd
+
+      - name: Install OpenCC
+        run: |
+          vcpkg install opencc:x64-windows
+        shell: cmd
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build ^
+            -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DBUILD_SEPARATE_LIBS=ON ^
+            -DBUILD_SHARED_LIBS=OFF ^
+            -DENABLE_LOGGING=OFF ^
+            -DENABLE_EXTERNAL_PLUGINS=ON
+        shell: cmd
+
+      - name: Build Rime with copilot plugin
+        run: |
+          cmake --build build --config Release
+        shell: cmd
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rime-with-copilot
+          path: |
+            build/Release/rime.dll
+            build/Release/*.lib
+            build/plugins/librime-copilot/rime-copilot.dll

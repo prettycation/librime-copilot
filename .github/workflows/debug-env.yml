@@ -1,0 +1,45 @@
+name: Debug Environment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Rime (main repository)
+        uses: actions/checkout@v4
+        with:
+          repository: rime/librime
+          path: librime-root
+          fetch-depth: 0
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Print CMake version
+        shell: powershell
+        run: |
+          Write-Host "=== CMake Version ==="
+          cmake --version
+
+      - name: Print MSVC Compiler info
+        shell: cmd
+        run: |
+          echo === MSVC Compiler Info ===
+          cl
+
+      - name: Print src/CMakeLists.txt content
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
+        run: |
+          Write-Host "=== src/CMakeLists.txt Content ==="
+          Get-Content src/CMakeLists.txt | ForEach-Object { Write-Host $_ }
+
+      - name: Search for GLOG definitions
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
+        run: |
+          Write-Host "=== Searching for GLOG definitions in src/CMakeLists.txt ==="
+          Select-String -Path src/CMakeLists.txt -Pattern "GLOG" -Context 0,2

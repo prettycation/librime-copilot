@@ -63,12 +63,19 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Create MSVC Shim Header
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
+        run: |
+          "#define __attribute__(...) " | Out-File -FilePath "msvc_shim.h" -Encoding utf8
+          Write-Host "✅ Created msvc_shim.h with __attribute__ variadic macro"
+
       - name: Configure CMake
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
         run: |
           $env:VCPKG_ROOT="${{ github.workspace }}/vcpkg"
-          cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D__attribute__``(x``)=" -B build
+          cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX /FI${{ github.workspace }}/librime-root/msvc_shim.h" -B build
 
       - name: Build
         shell: powershell

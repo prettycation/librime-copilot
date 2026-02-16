@@ -62,24 +62,26 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Create MSVC Shim Header
+      - name: Inject Shim and Verify
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
         run: |
-          $shimContent = "#define __attribute__(x) "
+          # 1. 创建 Shim 文件
+          $shimContent = "#define __attribute__(...) "
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
           Write-Host "✅ Created msvc_shim.h"
 
-      - name: Inject Shim into CMakeLists.txt
-        shell: powershell
-        working-directory: ${{ github.workspace }}/librime-root
-        run: |
+          # 2. 获取绝对路径 (注意：CMake 需要正斜杠)
           $shimPath = "$PWD/msvc_shim.h".Replace("\", "/")
+
+          # 3. 注入 CMakeLists.txt
           $cmakeFile = "CMakeLists.txt"
-          $injection = "`nif(MSVC)`n  add_compile_options(/FI`"$shimPath`")`nendif()`n"
+          $injection = "`nif(MSVC)`n  add_compile_options(/FI`"$shimPath`")`n  message(STATUS `"Injecting Shim: $shimPath`")`nendif()`n"
           Add-Content -Path $cmakeFile -Value $injection
-          Write-Host "✅ Injected /FI option into $cmakeFile"
-          Get-Content $cmakeFile -Tail 5
+
+          # 4. 【调试】打印文件内容以供检查
+          Write-Host "=== Verified CMakeLists.txt Tail ==="
+          Get-Content $cmakeFile -Tail 10
 
       - name: Configure CMake
         shell: powershell

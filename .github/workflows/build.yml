@@ -17,19 +17,18 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout Rime main repo
+      - name: Checkout Rime (main repository)
         uses: actions/checkout@v4
         with:
           repository: rime/librime
-          path: ./
+          path: librime-root
           submodules: recursive
           fetch-depth: 0
 
-      - name: Checkout copilot plugin fork
+      - name: Checkout Copilot Plugin (this repository)
         uses: actions/checkout@v4
         with:
-          repository: prettycation/librime-copilot
-          path: plugins/librime-copilot
+          path: librime-root/plugins/librime-copilot
           submodules: recursive
           fetch-depth: 0
 
@@ -38,57 +37,48 @@ jobs:
         with:
           args: install cmake ninja -y
 
-      - name: Install Boost via vcpkg
+      - name: Setup Vcpkg
+        shell: powershell
         run: |
-          vcpkg install boost:x64-windows
-        shell: cmd
+          git clone https://github.com/microsoft/vcpkg.git $env:GITHUB_WORKSPACE\vcpkg
+          $env:GITHUB_WORKSPACE\vcpkg\bootstrap-vcpkg.bat
+          echo "$env:GITHUB_WORKSPACE\vcpkg" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Install glog
+      - name: Install Dependencies via Vcpkg
+        shell: powershell
+        working-directory: ${{ github.workspace }}/vcpkg
         run: |
-          vcpkg install glog:x64-windows
-        shell: cmd
-
-      - name: Install yaml-cpp
-        run: |
-          vcpkg install yaml-cpp:x64-windows
-        shell: cmd
-
-      - name: Install leveldb
-        run: |
-          vcpkg install leveldb:x64-windows
-        shell: cmd
-
-      - name: Install marisa-trie
-        run: |
-          vcpkg install marisa:x64-windows
-        shell: cmd
-
-      - name: Install OpenCC
-        run: |
-          vcpkg install opencc:x64-windows
-        shell: cmd
+          .\vcpkg install boost:x64-windows glog:x64-windows yaml-cpp:x64-windows leveldb:x64-windows marisa:x64-windows opencc:x64-windows
 
       - name: Configure CMake
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
         run: |
-          cmake -S . -B build ^
-            -G Ninja ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DBUILD_SEPARATE_LIBS=ON ^
-            -DBUILD_SHARED_LIBS=OFF ^
-            -DENABLE_LOGGING=OFF ^
-            -DENABLE_EXTERNAL_PLUGINS=ON
-        shell: cmd
+          $env:VCPKG_ROOT="${{ github.workspace }}/vcpkg"
+          cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -B build
 
-      - name: Build Rime with copilot plugin
+      - name: Build
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
         run: |
           cmake --build build --config Release
-        shell: cmd
 
-      - name: Upload artifacts
+      - name: Upload Rime DLL
         uses: actions/upload-artifact@v4
         with:
-          name: rime-with-copilot
+          name: rime-dll
+          path: ${{ github.workspace }}/librime-root/build/Release/rime.dll
+
+      - name: Upload Copilot Plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: librime-copilot
           path: |
-            build/Release/rime.dll
-            build/Release/*.lib
-            build/plugins/librime-copilot/rime-copilot.dll
+            ${{ github.workspace }}/librime-root/build/Release/librime-copilot.dll
+            ${{ github.workspace }}/librime-root/build/Release/rime.dll
+
+      - name: Upload All LIB Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: lib-files
+          path: ${{ github.workspace }}/librime-root/build/Release/*.lib

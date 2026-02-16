@@ -44,18 +44,31 @@ jobs:
           & "$env:GITHUB_WORKSPACE/vcpkg/bootstrap-vcpkg.bat"
           echo "$env:GITHUB_WORKSPACE/vcpkg" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      - name: Cache Vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg/installed
+            ${{ github.workspace }}/vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json', '**/.github/workflows/build.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
+
       - name: Install Dependencies via Vcpkg
         shell: powershell
         working-directory: ${{ github.workspace }}/vcpkg
         run: |
-          .\vcpkg install boost:x64-windows glog:x64-windows yaml-cpp:x64-windows leveldb:x64-windows marisa-trie:x64-windows opencc:x64-windows --allow-unsupported
+          .\vcpkg install boost:x64-windows glog:x64-windows yaml-cpp:x64-windows leveldb:x64-windows marisa-trie:x64-windows opencc:x64-windows gtest:x64-windows --allow-unsupported
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Configure CMake
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
         run: |
           $env:VCPKG_ROOT="${{ github.workspace }}/vcpkg"
-          cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -B build
+          cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF -B build
 
       - name: Build
         shell: powershell

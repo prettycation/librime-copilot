@@ -63,6 +63,17 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Patch librime CMakeLists.txt
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
+        run: |
+          $path = "src/CMakeLists.txt"
+          $content = Get-Content $path -Raw
+          # 强力移除所有针对 GCC/Clang 的 __attribute__ 定义，防止污染 MSVC
+          $content = $content -replace 'add_definitions\(-DGLOG_.*__attribute__.*\)', '# [PATCHED] Removed GCC flags for MSVC build'
+          Set-Content $path $content
+          Write-Host "✅ Successfully patched $path to remove invalid GLOG flags."
+
       - name: Configure CMake
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root

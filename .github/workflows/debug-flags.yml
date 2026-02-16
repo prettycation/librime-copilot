@@ -1,0 +1,97 @@
+name: Debug CMake Flags
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Rime (main repository)
+        uses: actions/checkout@v4
+        with:
+          repository: rime/librime
+          path: librime-root
+          fetch-depth: 0
+
+      - name: Checkout Copilot Plugin (this repository)
+        uses: actions/checkout@v4
+        with:
+          path: librime-root/plugins/librime-copilot
+          fetch-depth: 0
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Create MSVC Shim Header
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
+        run: |
+          "#define __attribute__(...) " | Out-File -FilePath "msvc_shim.h" -Encoding utf8
+          Write-Host "✅ Created msvc_shim.h with __attribute__ variadic macro"
+
+      - name: Print msvc_shim.h content
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
+        run: |
+          Write-Host "=== msvc_shim.h Content ==="
+          Get-Content msvc_shim.h
+          Write-Host ""
+          Write-Host "=== File Size ==="
+          (Get-Item msvc_shim.h).Length
+
+      - name: Setup Vcpkg
+        shell: powershell
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git $env:GITHUB_WORKSPACE/vcpkg
+          & "$env:GITHUB_WORKSPACE/vcpkg/bootstrap-vcpkg.bat"
+          echo "$env:GITHUB_WORKSPACE/vcpkg" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Cache Vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg/installed
+            ${{ github.workspace }}/vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json', '**/.github/workflows/build.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
+
+      - name: Configure CMake
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
+        run: |
+          $env:VCPKG_ROOT="${{ github.workspace }}/vcpkg"
+          cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX /FI${{ github.workspace }}/librime-root/msvc_shim.h" -B build
+
+      - name: Check CMake Cache for Flags
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root/build
+        run: |
+          Write-Host "=== CMake Cache - CMAKE_CXX_FLAGS ==="
+          cmake -LA -N | Select-String "CMAKE_CXX_FLAGS"
+          Write-Host ""
+          Write-Host "=== CMake Cache - msvc_shim.h ==="
+          cmake -LA -N | Select-String "msvc_shim"
+
+      - name: Dry run ninja to see actual compiler commands
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root/build
+        run: |
+          Write-Host "=== Ninja Dry Run (verbose, no execution) ==="
+          ninja -v -n 2>&1 | Select-Object -First 50
+
+      - name: Search for /FI flags in ninja commands
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root/build
+        run: |
+          Write-Host "=== Searching for /FI flags in cl.exe commands ==="
+          ninja -v -n 2>&1 | Select-String "/FI" | Select-Object -First 20
+
+      - name: Search for __attribute__ in compiler commands
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root/build
+        run: |
+          Write-Host "=== Searching for __attribute__ definitions ==="
+          ninja -v -n 2>&1 | Select-String "__attribute__" | Select-Object -First 20

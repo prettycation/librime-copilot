@@ -62,36 +62,19 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Inject Shim and Verify
+      - name: Create MSVC Shim Header
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
         run: |
-          # 1. 创建 Shim 文件
           $shimContent = "#define __attribute__(...) "
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
-          Write-Host "✅ Created msvc_shim.h"
-
-          # 2. 获取绝对路径
-          $shimPath = "$PWD/msvc_shim.h".Replace("\", "/")
-
-          # 3. 读取原 CMakeLists.txt
-          $cmakeFile = "CMakeLists.txt"
-          $originalContent = Get-Content $cmakeFile -Raw
-
-          # 4. 定义注入内容 (放在最开头)
-          $injection = "if(MSVC)`n  add_compile_options(/FI`"$shimPath`")`n  message(STATUS `"Injecting Shim: $shimPath`")`nendif()`n"
-
-          # 5. 拼接并在头部插入
-          $newContent = $injection + $originalContent
-          Set-Content -Path $cmakeFile -Value $newContent
-
-          # 6. 验证头部
-          Write-Host "=== Verified CMakeLists.txt Head ==="
-          Get-Content $cmakeFile -Head 10
+          Write-Host "✅ Created msvc_shim.h at ${{ github.workspace }}/librime-root/msvc_shim.h"
 
       - name: Configure CMake
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
+        env:
+          CL: /FI"${{ github.workspace }}/librime-root/msvc_shim.h"
         run: |
           $env:VCPKG_ROOT="${{ github.workspace }}/vcpkg"
           cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX" -B build
@@ -99,6 +82,8 @@ jobs:
       - name: Build
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
+        env:
+          CL: /FI"${{ github.workspace }}/librime-root/msvc_shim.h"
         run: |
           cmake --build build --config Release
 

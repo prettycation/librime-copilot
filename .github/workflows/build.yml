@@ -71,17 +71,23 @@ jobs:
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
           Write-Host "✅ Created msvc_shim.h"
 
-          # 2. 获取绝对路径 (注意：CMake 需要正斜杠)
+          # 2. 获取绝对路径
           $shimPath = "$PWD/msvc_shim.h".Replace("\", "/")
 
-          # 3. 注入 CMakeLists.txt
+          # 3. 读取原 CMakeLists.txt
           $cmakeFile = "CMakeLists.txt"
-          $injection = "`nif(MSVC)`n  add_compile_options(/FI`"$shimPath`")`n  message(STATUS `"Injecting Shim: $shimPath`")`nendif()`n"
-          Add-Content -Path $cmakeFile -Value $injection
+          $originalContent = Get-Content $cmakeFile -Raw
 
-          # 4. 【调试】打印文件内容以供检查
-          Write-Host "=== Verified CMakeLists.txt Tail ==="
-          Get-Content $cmakeFile -Tail 10
+          # 4. 定义注入内容 (放在最开头)
+          $injection = "if(MSVC)`n  add_compile_options(/FI`"$shimPath`")`n  message(STATUS `"Injecting Shim: $shimPath`")`nendif()`n"
+
+          # 5. 拼接并在头部插入
+          $newContent = $injection + $originalContent
+          Set-Content -Path $cmakeFile -Value $newContent
+
+          # 6. 验证头部
+          Write-Host "=== Verified CMakeLists.txt Head ==="
+          Get-Content $cmakeFile -Head 10
 
       - name: Configure CMake
         shell: powershell

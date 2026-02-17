@@ -70,6 +70,20 @@ jobs:
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
           Write-Host "✅ Created msvc_shim.h at ${{ github.workspace }}/librime-root/msvc_shim.h"
 
+      - name: Patch src/CMakeLists.txt to remove 'dl' lib
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
+        run: |
+          $path = "src/CMakeLists.txt"
+          $content = Get-Content $path -Raw
+          if ($content.Contains('set(rime_optional_deps ${rime_optional_deps} dl)')) {
+              $content = $content.Replace('set(rime_optional_deps ${rime_optional_deps} dl)', 'if(NOT WIN32)`n  set(rime_optional_deps ${rime_optional_deps} dl)`nendif()')
+              Set-Content $path $content
+              Write-Host "✅ Patched src/CMakeLists.txt to exclude 'dl' library on Windows."
+          } else {
+              Write-Warning "⚠️ Could not find 'dl' dependency line. Check CMakeLists.txt content."
+          }
+
       - name: Configure CMake
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root

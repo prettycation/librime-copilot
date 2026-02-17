@@ -1,0 +1,45 @@
+name: Verify Fix (Fast)
+
+on: workflow_dispatch
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Create Test Files
+        shell: powershell
+        run: |
+          # 1. 创建模拟错误的源代码 (repro.cpp)
+          # 这种写法在 MSVC 下如果不处理绝对报错
+          $code = "void __attribute__((visibility(`"default`"))) test_func() {} `n int main() { return 0; }"
+          Set-Content -Path "repro.cpp" -Value $code
+
+          # 2. 创建修复用的垫片 (shim.h)
+          $shim = "#define __attribute__(x) "
+          Set-Content -Path "shim.h" -Value $shim
+
+      - name: Test Compile WITHOUT Fix (Should Fail)
+        shell: cmd
+        continue-on-error: true
+        run: |
+          echo "Expect this to fail..."
+          cl repro.cpp
+          if %ERRORLEVEL% EQU 0 exit 1
+
+      - name: Test Compile WITH Fix (Should Pass)
+        shell: cmd
+        # 【关键验证】通过环境变量注入 Shim
+        env:
+          CL: /FI"shim.h"
+        run: |
+          echo "Testing with CL environment variable..."
+          cl repro.cpp
+          if %ERRORLEVEL% NEQ 0 (
+            echo "❌ Fix failed!"
+            exit 1
+          ) else (
+            echo "✅ Fix worked! CL environment variable effectively injected the shim."
+          )

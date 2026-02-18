@@ -70,11 +70,27 @@ jobs:
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
           Write-Host "✅ Created msvc_shim.h at $PWD/msvc_shim.h"
 
-      - name: Patch src/CMakeLists.txt to remove 'dl' lib
+      - name: Create Boost Stub
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root/src
+        run: |
+          $stubContent = @'
+            #include <boost/exception/exception.hpp>
+            namespace boost {
+                void throw_exception(std::exception const& e) {
+                    throw e;
+                }
+            }
+          '@
+          Set-Content -Path "boost_stub.cc" -Value $stubContent -Encoding UTF8
+          Write-Host "✅ Created boost_stub.cc"
+
+      - name: Patch src/CMakeLists.txt to remove 'dl' lib and add boost_stub
         shell: bash
         working-directory: ${{ github.workspace }}/librime-root
         run: |
           sed -i 's/set(rime_optional_deps ${rime_optional_deps} dl)/if(NOT WIN32)\n  set(rime_optional_deps ${rime_optional_deps} dl)\nendif()/' src/CMakeLists.txt
+          sed -i 's/set(rime_core_module_src/list(rime_core_module_src)/set(rime_core_module_src\n  list(APPEND rime_core_module_src boost_stub)\nendif()/g' src/CMakeLists.txt
           echo "✅ Patched src/CMakeLists.txt using sed."
 
       - name: Configure CMake

@@ -64,10 +64,24 @@ jobs:
 
       - name: Create MSVC Shim Header
         shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
         run: |
           $shimContent = "#define __attribute__(x) "
-          Set-Content -Path "C:/msvc_shim.h" -Value $shimContent -Encoding ASCII
-          Write-Host "✅ Created msvc_shim.h at C:/msvc_shim.h"
+          Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
+          Write-Host "✅ Created msvc_shim.h at ${{ github.workspace }}/librime-root/msvc_shim.h"
+
+      - name: Inject Shim into CMakeLists.txt
+        shell: powershell
+        working-directory: ${{ github.workspace }}/librime-root
+        run: |
+          $shimPath = "$PWD/msvc_shim.h".Replace("\", "/")
+          $cmakeFile = "CMakeLists.txt"
+          $originalContent = Get-Content $cmakeFile -Raw
+          $injection = "if(MSVC)`n  add_compile_options(/FI`"$shimPath`")`n  message(STATUS `"Injecting Shim: $shimPath`")`nendif()`n"
+          $newContent = $injection + $originalContent
+          Set-Content -Path $cmakeFile -Value $newContent
+          Write-Host "✅ Injected /FI option into $cmakeFile"
+          Get-Content $cmakeFile -Head 5
 
       - name: Patch src/CMakeLists.txt to remove 'dl' lib
         shell: bash
@@ -80,8 +94,6 @@ jobs:
       - name: Configure CMake
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
-        env:
-          CL: /FI"C:/msvc_shim.h"
         run: |
           $env:VCPKG_ROOT="${{ github.workspace }}/vcpkg"
           cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX" -B build
@@ -89,8 +101,6 @@ jobs:
       - name: Build
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
-        env:
-          CL: /FI"C:/msvc_shim.h"
         run: |
           cmake --build build --config Release
 

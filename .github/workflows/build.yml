@@ -68,20 +68,7 @@ jobs:
         run: |
           $shimContent = "#define __attribute__(x) "
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
-          Write-Host "✅ Created msvc_shim.h at ${{ github.workspace }}/librime-root/msvc_shim.h"
-
-      - name: Inject Shim into CMakeLists.txt
-        shell: powershell
-        working-directory: ${{ github.workspace }}/librime-root
-        run: |
-          $shimPath = "$PWD/msvc_shim.h".Replace("\", "/")
-          $cmakeFile = "CMakeLists.txt"
-          $originalContent = Get-Content $cmakeFile -Raw
-          $injection = "if(MSVC)`n  add_compile_options(/FI`"$shimPath`")`n  message(STATUS `"Injecting Shim: $shimPath`")`nendif()`n"
-          $newContent = $injection + $originalContent
-          Set-Content -Path $cmakeFile -Value $newContent
-          Write-Host "✅ Injected /FI option into $cmakeFile"
-          Get-Content $cmakeFile -Head 5
+          Write-Host "✅ Created msvc_shim.h at $PWD/msvc_shim.h"
 
       - name: Patch src/CMakeLists.txt to remove 'dl' lib
         shell: bash
@@ -89,7 +76,6 @@ jobs:
         run: |
           sed -i 's/set(rime_optional_deps ${rime_optional_deps} dl)/if(NOT WIN32)\n  set(rime_optional_deps ${rime_optional_deps} dl)\nendif()/' src/CMakeLists.txt
           echo "✅ Patched src/CMakeLists.txt using sed."
-          grep -C 3 "rime_optional_deps" src/CMakeLists.txt
 
       - name: Configure CMake
         shell: powershell

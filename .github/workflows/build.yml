@@ -93,7 +93,8 @@ jobs:
                 int FLAGS_logfile_mode = 0;
             }
             namespace fLS {
-                std::string FLAGS_log_dir = "";
+                std::string FLAGS_log_dir_storage = "";
+                std::string& FLAGS_log_dir = FLAGS_log_dir_storage;
             }
           '@
           Set-Content -Path "boost_stub.cc" -Value $stubContent -Encoding UTF8

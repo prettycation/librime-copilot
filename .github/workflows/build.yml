@@ -70,47 +70,40 @@ jobs:
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
           Write-Host "✅ Created msvc_shim.h at $PWD/msvc_shim.h"
 
-      - name: Create Boost and GLog Stub
+      - name: Create Boost Stub
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root/src
         run: |
           $stubContent = @'
-            #include <string>
             #include <exception>
             #include <boost/exception/exception.hpp>
             
             // Fix Boost link error
             namespace boost {
                 void throw_exception(std::exception const& e) {
-                    // 简单的异常处理，防止崩溃即可
                     std::terminate();
                 }
             }
-            
-            // Fix GLog link errors (Mocking missing flags)
-            namespace fLI {
-                int FLAGS_minloglevel = 0;
-                int FLAGS_logfile_mode = 0;
-            }
-            namespace fLS {
-                std::string FLAGS_log_dir_storage = "";
-                std::string& FLAGS_log_dir = FLAGS_log_dir_storage;
-            }
           '@
           Set-Content -Path "boost_stub.cc" -Value $stubContent -Encoding UTF8
-          Write-Host "✅ Created boost_stub.cc with GLog mocks"
+          Write-Host "✅ Created boost_stub.cc (Boost only)"
 
-      - name: Patch src/CMakeLists.txt to remove 'dl' lib
+      - name: Patch Sources
         shell: bash
         working-directory: ${{ github.workspace }}/librime-root
         run: |
-          # 1. 修复 dl 库
+          # 修复 dl 库依赖
           sed -i 's/set(rime_optional_deps ${rime_optional_deps} dl)/if(NOT WIN32)\n  set(rime_optional_deps ${rime_optional_deps} dl)\nendif()/' src/CMakeLists.txt
           
-          # 2. 【关键】强制将 boost_stub.cc 加入编译列表
-          sed -i '/aux_source_directory(. rime_api_src)/a set(rime_api_src ${rime_api_src} boost_stub)' src/CMakeLists.txt
+          # 强制将 boost_stub.cc 加入编译列表
+          sed -i '/aux_source_directory(. rime_api_src)/a set(rime_api_src ${rime_api_src} boost_stub.cc)' src/CMakeLists.txt
           
-          echo "✅ Patched src/CMakeLists.txt using sed."
+          # 【关键】直接屏蔽 setup.cc 中的 GLog Flags，解决符号链接错误
+          sed -i 's/FLAGS_log_dir/\/\/ FLAGS_log_dir/g' src/rime/setup.cc
+          sed -i 's/FLAGS_minloglevel/\/\/ FLAGS_minloglevel/g' src/rime/setup.cc
+          sed -i 's/FLAGS_logfile_mode/\/\/ FLAGS_logfile_mode/g' src/rime/setup.cc
+          
+          echo "✅ Patched CMakeLists.txt and setup.cc"
 
       - name: Configure CMake
         shell: powershell
@@ -119,7 +112,14 @@ jobs:
           CL: /FI"${{ github.workspace }}/librime-root/msvc_shim.h"
         run: |
           $env:VCPKG_ROOT="${{ github.workspace }}/vcpkg"
-          cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX" -B build
+          cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL `
+            -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON `
+            -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF `
+            -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX" `
+            -B build
 
       - name: Build
         shell: powershell

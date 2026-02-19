@@ -62,31 +62,13 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Create MSVC Shim Header
+      - name: Create MSVC Shim Header with Inline Boost Fix
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
         run: |
-          $shimContent = "#define __attribute__(x) "
+          $shimContent = "#define __attribute__(x)`n`n`n`n// Inline boost::throw_exception to fix all modules`n`n`nstatic inline void boost::throw_exception(std::exception const& e) { std::terminate(); }"
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
-          Write-Host "✅ Created msvc_shim.h at $PWD/msvc_shim.h"
-
-      - name: Create Boost Stub
-        shell: powershell
-        working-directory: ${{ github.workspace }}/librime-root/src
-        run: |
-          $stubContent = @'
-            #include <exception>
-            #include <boost/exception/exception.hpp>
-            
-            // Fix Boost link error
-            namespace boost {
-                void throw_exception(std::exception const& e) {
-                    std::terminate();
-                }
-            }
-          '@
-          Set-Content -Path "boost_stub.cc" -Value $stubContent -Encoding UTF8
-          Write-Host "✅ Created boost_stub.cc (Boost only)"
+          Write-Host "✅ Created msvc_shim.h with inline boost fix"
 
       - name: Patch Sources
         shell: bash
@@ -94,9 +76,6 @@ jobs:
         run: |
           # 修复 dl 库依赖
           sed -i 's/set(rime_optional_deps ${rime_optional_deps} dl)/if(NOT WIN32)\n  set(rime_optional_deps ${rime_optional_deps} dl)\nendif()/' src/CMakeLists.txt
-          
-          # 强制将 boost_stub.cc 加入编译列表
-          sed -i '/aux_source_directory(. rime_api_src)/a set(rime_api_src ${rime_api_src} boost_stub.cc)' src/CMakeLists.txt
           
           # 【关键】直接屏蔽 setup.cc 中的 GLog Flags，解决符号链接错误
           sed -i 's/FLAGS_log_dir/\/\/ FLAGS_log_dir/g' src/rime/setup.cc

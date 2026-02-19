@@ -66,9 +66,22 @@ jobs:
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
         run: |
-          $shimContent = "#define __attribute__(x)`n`n`n`n// Inline boost::throw_exception to fix all modules`n`n`nstatic inline void boost::throw_exception(std::exception const& e) { std::terminate(); }"
+          $shimContent = @'
+            #define __attribute__(x) 
+            
+            #ifdef __cplusplus
+            // Inline boost::throw_exception to fix all modules
+            // Protected by __cplusplus to avoid breaking C compiler checks
+            #include <exception>
+            namespace boost {
+                [[noreturn]] static inline void throw_exception(std::exception const& e) {
+                    std::terminate();
+                }
+            }
+            #endif
+          '@
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
-          Write-Host "✅ Created msvc_shim.h with inline boost fix"
+          Write-Host "✅ Created msvc_shim.h with C-safe inline boost fix"
 
       - name: Patch Sources
         shell: bash

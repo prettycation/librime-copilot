@@ -66,8 +66,43 @@ jobs:
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
         run: |
-          Set-Content -Path "msvc_shim.h" -Value "#define __attribute__(x)" -Encoding ASCII
-          Write-Host "✅ Created msvc_shim.h"
+          $shimContent = @'
+            #pragma once
+            #define __attribute__(x)
+
+            #ifdef __cplusplus
+            // Fix C++17 missing hardware_destructive_interface_size
+            #if defined(_MSC_VER) && !defined(__cpp_lib_hardware_interference_size)
+            namespace std {
+                constexpr std::size_t hardware_destructive_interference_size = 64;
+                constexpr std::size_t hardware_constructive_interference_size = 64;
+            }
+            #endif
+
+            // Fix Boost Link Error (Use inline to satisfy linker)
+            namespace boost {
+                [[noreturn]] inline void throw_exception(std::exception const& e) {
+                    std::cerr << "Boost exception: " << e.what() << std::endl;
+                    std::terminate();
+                }
+            }
+
+            // Fix GLog Link Errors (Macro redirect to local static variables)
+            #define FLAGS_log_dir           RIME_MOCK_log_dir
+            #define FLAGS_minloglevel       RIME_MOCK_minloglevel
+            #define FLAGS_logfile_mode      RIME_MOCK_logfile_mode
+
+            namespace fLI {
+                static int& FLAGS_minloglevel = RIME_MOCK_minloglevel;
+                static int& FLAGS_logfile_mode = RIME_MOCK_logfile_mode;
+            }
+            namespace fLS {
+                static std::string RIME_MOCK_log_dir;
+                static std::string& FLAGS_log_dir = RIME_MOCK_log_dir;
+            }
+          '@
+          Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding UTF8
+          Write-Host "✅ Created msvc_shim.h with all fixes"
 
       - name: Patch Sources
         shell: bash
@@ -75,11 +110,7 @@ jobs:
         run: |
           # 修复 dl 库依赖
           sed -i 's/set(rime_optional_deps ${rime_optional_deps} dl)/if(NOT WIN32)\n  set(rime_optional_deps ${rime_optional_deps} dl)\nendif()/' src/CMakeLists.txt
-          # 注释掉 setup.cc 中的 GLog Flags，避免链接错误
-          sed -i 's/^FLAGS_log_dir=/\/\/ FLAGS_log_dir/' src/rime/setup.cc
-          sed -i 's/^FLAGS_minloglevel=/\/\/ FLAGS_minloglevel/' src/rime/setup.cc
-          sed -i 's/^FLAGS_logfile_mode=/\/\/ FLAGS_logfile_mode/' src/rime/setup.cc
-          echo "✅ Patched CMakeLists.txt and setup.cc"
+          echo "✅ Patched src/CMakeLists.txt using sed."
 
       - name: Configure CMake
         shell: powershell
@@ -88,16 +119,7 @@ jobs:
           CL: /FI"${{ github.workspace }}/librime-root/msvc_shim.h"
         run: |
           $env:VCPKG_ROOT="${{ github.workspace }}/vcpkg"
-          cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL `
-            -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON `
-            -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF `
-            -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX /MD" `
-            -DCMAKE_CXX_FLAGS_RELEASE="/MD /O2 /Ob2 /DNDEBUG" `
-            -DCMAKE_CXX_FLAGS_DEBUG="/MDd /Zi /Ob0 /Od /RTC1" `
-            -B build
+          cmake -G Ninja -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX /MD" -B build
 
       - name: Build
         shell: powershell

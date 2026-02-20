@@ -73,6 +73,16 @@ jobs:
             // Inline boost::throw_exception to fix all modules
             // Protected by __cplusplus to avoid breaking C compiler checks
             #include <exception>
+            
+            // Fix for MSVC missing std::hardware_destructive_interface_size
+            // This forces definition into std namespace if missing
+            #if defined(_MSC_VER) && !defined(__cpp_lib_hardware_interference_size)
+            namespace std {
+                constexpr std::size_t hardware_destructive_interface_size = 64;
+                constexpr std::size_t hardware_constructive_interference_size = 64;
+            }
+            //endif
+            
             namespace boost {
                 [[noreturn]] static inline void throw_exception(std::exception const& e) {
                     std::terminate();
@@ -81,7 +91,7 @@ jobs:
             #endif
           '@
           Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
-          Write-Host "✅ Created msvc_shim.h with C-safe inline boost fix"
+          Write-Host "✅ Created msvc_shim.h with C++17 fix and Boost stub"
 
       - name: Patch Sources
         shell: bash
@@ -110,7 +120,7 @@ jobs:
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL `
             -DBUILD_SHARED_LIBS=ON -DBUILD_SEPARATE_LIBS=ON -DENABLE_EXTERNAL_PLUGINS=ON `
             -DBUILD_TEST=OFF -DENABLE_TESTS=OFF -DBUILD_GMOCK=OFF `
-            -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX /MD /D_ENABLE_EXTENDED_ALIGNED_STORAGE" `
+            -DCMAKE_CXX_FLAGS="/DGLOG_NO_ABBREVIATED_SEVERITIES /DWIN32_LEAN_AND_MEAN /DNOMINMAX /MD" `
             -DCMAKE_CXX_FLAGS_RELEASE="/MD /O2 /Ob2 /DNDEBUG" `
             -DCMAKE_CXX_FLAGS_DEBUG="/MDd /Zi /Ob0 /Od /RTC1" `
             -B build

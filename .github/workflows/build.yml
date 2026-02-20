@@ -62,36 +62,12 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Create MSVC Shim Header with Inline Boost Fix
+      - name: Create MSVC Shim Header
         shell: powershell
         working-directory: ${{ github.workspace }}/librime-root
         run: |
-          $shimContent = @'
-            #define __attribute__(x) 
-            
-            #ifdef __cplusplus
-            // Inline boost::throw_exception to fix all modules
-            // Protected by __cplusplus to avoid breaking C compiler checks
-            #include <exception>
-            
-            // Fix for MSVC missing std::hardware_destructive_interface_size
-            // This forces definition into std namespace if missing
-            #if defined(_MSC_VER) && !defined(__cpp_lib_hardware_interference_size)
-            namespace std {
-                constexpr std::size_t hardware_destructive_interface_size = 64;
-                constexpr std::size_t hardware_constructive_interference_size = 64;
-            }
-            //endif
-            
-            namespace boost {
-                [[noreturn]] static inline void throw_exception(std::exception const& e) {
-                    std::terminate();
-                }
-            }
-            #endif
-          '@
-          Set-Content -Path "msvc_shim.h" -Value $shimContent -Encoding ASCII
-          Write-Host "✅ Created msvc_shim.h with C++17 fix and Boost stub"
+          Set-Content -Path "msvc_shim.h" -Value "#define __attribute__(x)" -Encoding ASCII
+          Write-Host "✅ Created msvc_shim.h"
 
       - name: Patch Sources
         shell: bash
@@ -99,12 +75,10 @@ jobs:
         run: |
           # 修复 dl 库依赖
           sed -i 's/set(rime_optional_deps ${rime_optional_deps} dl)/if(NOT WIN32)\n  set(rime_optional_deps ${rime_optional_deps} dl)\nendif()/' src/CMakeLists.txt
-          
-          # 【关键】直接屏蔽 setup.cc 中的 GLog Flags，解决符号链接错误
-          sed -i 's/FLAGS_log_dir/\/\/ FLAGS_log_dir/g' src/rime/setup.cc
-          sed -i 's/FLAGS_minloglevel/\/\/ FLAGS_minloglevel/g' src/rime/setup.cc
-          sed -i 's/FLAGS_logfile_mode/\/\/ FLAGS_logfile_mode/g' src/rime/setup.cc
-          
+          # 注释掉 setup.cc 中的 GLog Flags，避免链接错误
+          sed -i 's/^FLAGS_log_dir=/\/\/ FLAGS_log_dir/' src/rime/setup.cc
+          sed -i 's/^FLAGS_minloglevel=/\/\/ FLAGS_minloglevel/' src/rime/setup.cc
+          sed -i 's/^FLAGS_logfile_mode=/\/\/ FLAGS_logfile_mode/' src/rime/setup.cc
           echo "✅ Patched CMakeLists.txt and setup.cc"
 
       - name: Configure CMake
